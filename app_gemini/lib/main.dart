@@ -1,3 +1,5 @@
+// ignore_for_file: use_build_context_synchronously
+
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
@@ -13,26 +15,43 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Motivação Diária',
-      theme: ThemeData(
-        primarySwatch: Colors.purple,
-        useMaterial3: true,
+      debugShowCheckedModeBanner: false,
+      title: 'Recomendações de Filme 🎬',
+      theme: ThemeData.dark().copyWith(
+        scaffoldBackgroundColor: const Color(0xFF141414),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Colors.black,
+          foregroundColor: Colors.white,
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.red,
+            foregroundColor: Colors.white,
+          ),
+        ),
+        inputDecorationTheme: const InputDecorationTheme(
+          filled: true,
+          fillColor: Color(0xFF2C2C2C),
+          border: OutlineInputBorder(),
+          hintStyle: TextStyle(color: Colors.white54),
+        ),
       ),
-      home: const MotivationalScreen(),
+      home: const MovieRecommendationScreen(),
     );
   }
 }
 
-class MotivationalScreen extends StatefulWidget {
-  const MotivationalScreen({Key? key}) : super(key: key);
+class MovieRecommendationScreen extends StatefulWidget {
+  const MovieRecommendationScreen({Key? key}) : super(key: key);
 
   @override
-  State<MotivationalScreen> createState() => _MotivationalScreenState();
+  State<MovieRecommendationScreen> createState() =>
+      _MovieRecommendationScreenState();
 }
 
-class _MotivationalScreenState extends State<MotivationalScreen> {
-  final TextEditingController _feelingsController = TextEditingController();
-  String _motivationalMessage = '';
+class _MovieRecommendationScreenState extends State<MovieRecommendationScreen> {
+  final TextEditingController _temaController = TextEditingController();
+  String _recommendationResult = '';
   bool _isLoading = false;
   bool _isListening = false;
   final stt.SpeechToText _speech = stt.SpeechToText();
@@ -44,114 +63,94 @@ class _MotivationalScreenState extends State<MotivationalScreen> {
   }
 
   void _initSpeech() async {
-    bool available = await _speech.initialize(
+    await _speech.initialize(
       onStatus: (status) {
         if (status == 'done') {
-          setState(() {
-            _isListening = false;
-          });
+          setState(() => _isListening = false);
         }
       },
-      onError: (errorNotification) {
-        setState(() {
-          _isListening = false;
-        });
-      },
+      onError: (_) => setState(() => _isListening = false),
     );
-    if (!available) {
-      // O reconhecimento de voz não está disponível no dispositivo
-    }
   }
 
   void _listen() async {
     if (!_isListening) {
-      bool available = await _speech.initialize();
-      if (available) {
-        setState(() {
-          _isListening = true;
-        });
+      if (await _speech.initialize()) {
+        setState(() => _isListening = true);
         _speech.listen(
           onResult: (result) {
             setState(() {
-              _feelingsController.text = result.recognizedWords;
+              _temaController.text += result.recognizedWords;
             });
           },
         );
       }
     } else {
-      setState(() {
-        _isListening = false;
-        _speech.stop();
-      });
+      setState(() => _isListening = false);
+      _speech.stop();
     }
   }
 
-  Future<void> _getMotivationalMessage() async {
-    if (_feelingsController.text.isEmpty) {
+  Future<void> _getMovieRecommendations() async {
+    if (_temaController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Por favor, conte como você está se sentindo')),
+        const SnackBar(content: Text('Por favor, digite ou fale o tema.')),
       );
       return;
     }
 
-    setState(() { 
-      _isLoading = true;
-    });
+    setState(() => _isLoading = true);
 
     try {
-      final String apiKey = 'sua chave';
-      final String apiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=$apiKey';
+      const String apiKey = 'AIzaSyBjKfh5Ly23rxn0qRB37tOh3qEQRHM_R7E';
+      const String apiUrl =
+          'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=$apiKey';
 
-      final String userFeeling = _feelingsController.text;
+      final String tema = _temaController.text;
       final String prompt = '''
-        Baseado no sentimento: "$userFeeling"
-        
-        Por favor, crie uma mensagem motivacional e positiva que ajude a pessoa a enfrentar o dia com mais confiança e bem-estar. A mensagem deve ser empática, reconhecer como a pessoa está se sentindo, e oferecer perspectivas positivas e encorajamento. Mantenha a mensagem concisa (máximo 4 parágrafos) e realmente significativa. Inclua palavras de afirmação e força.
-      ''';
+Quero assistir "$tema".
+
+Com base nesse tema, recomende até 3 filmes que combinem com esse tipo de tema. 
+Inclua nome do filme, breve sinopse e por que ele é adequado para o tema solicitado. Use uma linguagem leve e acolhedora. 
+Pode misturar clássicos e novidades, e variar entre gêneros como comédia, drama, aventura ou romance.
+''';
 
       final response = await http.post(
         Uri.parse(apiUrl),
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           "contents": [
             {
               "parts": [
-                {
-                  "text": prompt
-                }
-              ]
-            }
+                {"text": prompt},
+              ],
+            },
           ],
           "generationConfig": {
             "temperature": 0.7,
             "topK": 40,
             "topP": 0.95,
             "maxOutputTokens": 800,
-          }
+          },
         }),
       );
 
       if (response.statusCode == 200) {
         final jsonResponse = jsonDecode(response.body);
-        final String content = jsonResponse['candidates'][0]['content']['parts'][0]['text'];
-        setState(() {
-          _motivationalMessage = content;
-        });
+        final String content =
+            jsonResponse['candidates'][0]['content']['parts'][0]['text'];
+        setState(() => _recommendationResult = content);
       } else {
-        setState(() {
-          _motivationalMessage = 'Erro ao obter mensagem: ${response.statusCode}\n${response.body}';
-        });
+        setState(
+          () =>
+              _recommendationResult =
+                  'Erro: ${response.statusCode}\n${response.body}',
+        );
       }
     } catch (e) {
-      setState(() {
-        _motivationalMessage = 'Erro ao conectar com a API: $e';
-      });
+      setState(() => _recommendationResult = 'Erro ao conectar: $e');
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      setState(() => _isLoading = false);
     }
   }
 
@@ -159,30 +158,39 @@ class _MotivationalScreenState extends State<MotivationalScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Motivação Diária'),
-        backgroundColor: Colors.purple,
-        foregroundColor: Colors.white,
+        toolbarHeight: 100,
+        title: Row(
+          children: [
+            Image.asset('assets/logo.jpeg', height: 150),
+            const SizedBox(width: 10),
+            const Text('🎬 Recomendador de Filmes'),
+          ],
+        ),
       ),
       body: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const Text(
-              'Como você está se sentindo hoje?',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              'Qual o seu tema desejado? 🎭🎬💥❤️😂',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
             ),
             const SizedBox(height: 12),
             Row(
               children: [
                 Expanded(
                   child: TextField(
-                    controller: _feelingsController,
+                    controller: _temaController,
+                    style: const TextStyle(color: Colors.white),
                     decoration: const InputDecoration(
-                      hintText: 'Conte como você está se sentindo...',
-                      border: OutlineInputBorder(),
+                      hintText: 'Digite ou fale seu tema desejado...',
                     ),
-                    maxLines: 3,
+                    maxLines: 2,
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -190,49 +198,47 @@ class _MotivationalScreenState extends State<MotivationalScreen> {
                   onPressed: _listen,
                   icon: Icon(
                     _isListening ? Icons.mic : Icons.mic_none,
-                    color: _isListening ? Colors.red : Colors.purple,
+                    color: _isListening ? Colors.red : Colors.white,
                     size: 30,
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: _isLoading ? null : _getMotivationalMessage,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.purple,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 12),
-              ),
-              child: _isLoading
-                  ? const CircularProgressIndicator(color: Colors.white)
-                  : const Text('Receber Motivação', style: TextStyle(fontSize: 16)),
+            ElevatedButton.icon(
+              onPressed: _isLoading ? null : _getMovieRecommendations,
+              icon: const Icon(Icons.movie),
+              label:
+                  _isLoading
+                      ? const CircularProgressIndicator(color: Colors.white)
+                      : const Text('Buscar filmes'),
             ),
             const SizedBox(height: 24),
-            if (_motivationalMessage.isNotEmpty) ...[
+            if (_recommendationResult.isNotEmpty) ...[
               const Text(
-                'Sua mensagem do dia:',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                'Sugestões de Filmes:',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
               ),
               const SizedBox(height: 12),
               Expanded(
                 child: Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Colors.purple.shade50,
+                    color: Colors.white10,
                     borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.grey.withOpacity(0.3),
-                        blurRadius: 5,
-                        offset: const Offset(0, 3),
-                      ),
-                    ],
                   ),
                   child: SingleChildScrollView(
                     child: Text(
-                      _motivationalMessage,
-                      style: const TextStyle(fontSize: 16, height: 1.5),
+                      _recommendationResult,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        height: 1.5,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
                 ),
@@ -246,7 +252,7 @@ class _MotivationalScreenState extends State<MotivationalScreen> {
 
   @override
   void dispose() {
-    _feelingsController.dispose();
+    _temaController.dispose();
     super.dispose();
   }
 }
